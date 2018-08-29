@@ -174,6 +174,24 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
   }
 
   /**
+    * Do a data massage before sending with request
+    * @memberof InvenioRecordsCtrl
+    * @function cleanData
+    */
+  function cleanData() {
+    var _data = angular.merge({}, {metadata: vm.invenioRecordsModel});
+    var unwatend = [[null], [{}], '', [undefined]];
+    angular.forEach(_data.metadata, function(value, key) {
+      angular.forEach(unwatend, function(_value) {
+        if (angular.equals(_value, value))  {
+          delete _data.metadata[key];
+        }
+      });
+    });
+    return _data;
+  }
+
+  /**
     * Make the API request for the requested action
     * @memberof InvenioRecordsCtrl
     * @function makeActionRequest
@@ -181,10 +199,11 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
     * @param {String} method - The method (POST, PUT, DELETE).
     */
   function makeActionRequest(type, method) {
+    var _data = cleanData();
     var request = InvenioRecordsAPI.prepareRequest(
       vm.invenioRecordsEndpoints[type],
       method,
-      vm.invenioRecordsModel,
+      _data,
       vm.invenioRecordsArgs,
       vm.invenioRecordsEndpoints
     );

@@ -16,3 +16,6 @@ libpeerconnection.log
 
 dist/
 coverage/
+
+# Editors
+*.sublime-*
