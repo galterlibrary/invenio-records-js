@@ -29,7 +29,7 @@
   *    Invenio records controller.
   */
 function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
-    $timeout, InvenioRecordsAPI, ChainedPromise) {
+    $timeout, InvenioRecordsAPI) {
 
   // Parameters
 
@@ -93,17 +93,16 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
     $rootScope.$broadcast('invenio.records.loading.start');
     // Assign the model
     vm.invenioRecordsModel = angular.copy(record);
-    // Assign endpoints
-    vm.invenioRecordsEndpoints = angular.merge(
-      {},
-      endpoints
-    );
-
     // Assign the args
     vm.invenioRecordsArgs = angular.merge(
       {},
       vm.invenioRecordsArgs,
       args
+    );
+    // Assign endpoints
+    vm.invenioRecordsEndpoints = angular.merge(
+      {},
+      endpoints
     );
 
     if (Object.keys(links).length > 0) {
@@ -132,17 +131,13 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
   function getEndpoints(){
     var deferred = $q.defer();
     if (angular.isUndefined(vm.invenioRecordsEndpoints.self)) {
-      // Prepare the request
-      var request = InvenioRecordsAPI.prepareRequest(
-        vm.invenioRecordsEndpoints.initialization,
-        'POST',
-        {},
-        vm.invenioRecordsArgs,
-        vm.invenioRecordsEndpoints
-      );
       // If the action url doesnt exists request it
-      InvenioRecordsAPI.request(request)
-        .then(function success(response) {
+      InvenioRecordsAPI.request({
+        method: 'POST',
+        url: vm.invenioRecordsEndpoints.initialization,
+        data: {},
+        headers: vm.invenioRecordsArgs.headers || {}
+      }).then(function success(response) {
         // Upadate the endpoints
         $rootScope.$broadcast(
           'invenio.records.endpoints.updated', response.data.links
@@ -157,20 +152,6 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
       deferred.resolve({});
     }
     return deferred.promise;
-  }
-
-  /**
-    * Wrap the action request
-    * @memberof InvenioRecordsCtrl
-    * @function wrapAction
-    * @param {String} type - The action type (any existing key from ``links``).
-    * @param {String} method - The method (POST, PUT, DELETE).
-    */
-  function wrapAction(type, method) {
-    function _doAction() {
-      return makeActionRequest(type, method);
-    }
-    return _doAction;
   }
 
   /**
@@ -192,7 +173,7 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
   }
 
   /**
-    * Make the API request for the requested action
+    * Make the API request with the _data payload
     * @memberof InvenioRecordsCtrl
     * @function makeActionRequest
     * @param {String} type - The action type (any existing key from ``links``).
@@ -200,14 +181,12 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
     */
   function makeActionRequest(type, method) {
     var _data = cleanData();
-    var request = InvenioRecordsAPI.prepareRequest(
-      vm.invenioRecordsEndpoints[type],
-      method,
-      _data,
-      vm.invenioRecordsArgs,
-      vm.invenioRecordsEndpoints
-    );
-    return InvenioRecordsAPI.request(request);
+    return InvenioRecordsAPI.request({
+      url: vm.invenioRecordsEndpoints[type],
+      method: (method || 'PUT').toUpperCase(),
+      data: _data,
+      headers: vm.invenioRecordsArgs.headers || {}
+    });
   }
 
   /**
@@ -247,7 +226,7 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
       */
     function actionSuccessful(responses) {
       // NOTE: We keep only the response of the last action!!
-      var response = responses[responses.length - 1] || responses;
+      var response = responses[responses.length - 1] || {};
 
       $rootScope.$broadcast('invenio.records.alert', {
         type: 'success',
@@ -276,9 +255,7 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
       * @function actionErrored
       * @param {Object} response - The action request response.
       */
-    function actionErrored(responses) {
-      // NOTE: We keep only the response of the last action!!
-      var response = responses[responses.length - 1] || responses;
+    function actionErrored(response) {
       $rootScope.$broadcast('invenio.records.alert', {
         type: 'danger',
         data: response.data,
@@ -289,11 +266,19 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
         var promise = deferred.promise;
         promise.then(function displayValidationErrors() {
           angular.forEach(response.data.errors, function(value) {
-            $scope.$broadcast(
-              'schemaForm.error.' + value.field,
-              'backendValidationError',
-              value.message
-            );
+            try {
+              $scope.$broadcast(
+                'schemaForm.error.' + value.field.replace('metadata.', ''),
+                'backendValidationError',
+                value.message
+              );
+            } catch(error) {
+              $scope.$broadcast(
+                'schemaForm.error.' + value.field,
+                'backendValidationError',
+                value.message
+              );
+            }
           });
         }).then(function stopLoading() {
           $rootScope.$broadcast('invenio.records.loading.stop');
@@ -315,11 +300,10 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
         var promises = [];
         angular.forEach(_actions, function(action, index) {
           this.push(
-            wrapAction(action[0], action[1])
+            makeActionRequest(action[0], action[1])
           );
         }, promises);
-        // Do chained promise
-        ChainedPromise.promise(promises).then(
+        $q.all(promises).then(
           actionSuccessful,
           actionErrored
         );
@@ -435,20 +419,16 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
     * @param {Object} endpoints - The object with the endpoints.
     */
   function invenioRecordsLocationUpdated(evt, endpoints) {
+    // Change the location only if html exists
     if (!angular.isUndefined(endpoints.html)) {
-      // Get the pathname of localhost
-      var _current = document.createElement('a');
-      _current.href = $location.path();
-      // Get the pathname of endpoints
-      var _endpoints = document.createElement('a');
-      _endpoints.href = endpoints.html;
-      // Check if are the same
-      if (_endpoints.pathname !== _current.pathname) {
-        $location.url(_endpoints.pathname);
-        $location.replace();
-      }
+      // ¯\_(ツ)_/¯ https://github.com/angular/angular.js/issues/3924
+      var parser = document.createElement('a');
+      parser.href = endpoints.html;
+      $location.url(parser.pathname);
+      $location.replace();
     }
   }
+
 
   // Attach fuctions to the scope
 
@@ -501,7 +481,6 @@ InvenioRecordsCtrl.$inject = [
   '$location',
   '$timeout',
   'InvenioRecordsAPI',
-  'ChainedPromise',
 ];
 
 angular.module('invenioRecords.controllers')

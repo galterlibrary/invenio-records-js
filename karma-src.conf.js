@@ -46,7 +46,7 @@ module.exports = function(config) {
       'karma-jquery',
       'karma-mocha',
       'karma-ng-html2js-preprocessor',
-      'karma-phantomjs-launcher',
+      'karma-chrome-launcher',
       'karma-read-json',
       'karma-sinon-chai',
       'karma-spec-reporter',
@@ -76,7 +76,7 @@ module.exports = function(config) {
       'src/**/*.js',
       'src/**/*.html',
       'test/unit/**/*.js',
-      'test/e2e/**/*.js',
+      // 'test/e2e/**/*.js',
       {pattern: 'test/fixtures/**/*.json', included: false},
     ],
 
@@ -135,7 +135,7 @@ module.exports = function(config) {
 
     // start these browsers
     // available browser launchers: https://npmjs.org/browse/keyword/karma-launcher
-    browsers: ['PhantomJS'],
+    browsers: ['ChromeHeadless'],
 
 
     // Continuous Integration mode
