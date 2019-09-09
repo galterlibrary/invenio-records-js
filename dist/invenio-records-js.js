@@ -219,16 +219,17 @@ function invenioRecordsForm($q, schemaFormDecorators, InvenioRecordsAPI,
         } else if (options.scope && typeof options.scope.insideModel === 'string') {
           query = options.scope.insideModel;
           query = scope.$eval(options.processQuery || 'query', {query: query});
-        } else if (Array.isArray(options.initial) && options.initial.length > 0) {
+        }
+        else if (Array.isArray(options.initial) && options.initial.length > 0) {
           var titleMap = options.initial.map(function(element) {
             return {
-              "name": "(" + element["source"] + ") " + element['value'],
-              "value": element
-            }
+              'name': '(' + element['source'] + ') ' + element['value'],
+              'value': element
+            };
           });
-          var defer = $q.defer();
-          defer.resolve({"data": titleMap});
-          return defer.promise;
+          var deferral = $q.defer();
+          deferral.resolve({'data': titleMap});
+          return deferral.promise;
         }
 
       }
@@ -333,7 +334,7 @@ angular.module('invenioRecords.factories')
 
 
 function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
-    $timeout, InvenioRecordsAPI, ChainedPromise) {
+    $timeout, InvenioRecordsAPI) {
 
 
   var vm = this;
@@ -366,15 +367,14 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
   function invenioRecordsInit(evt, args, endpoints, record, links) {
     $rootScope.$broadcast('invenio.records.loading.start');
     vm.invenioRecordsModel = angular.copy(record);
-    vm.invenioRecordsEndpoints = angular.merge(
-      {},
-      endpoints
-    );
-
     vm.invenioRecordsArgs = angular.merge(
       {},
       vm.invenioRecordsArgs,
       args
+    );
+    vm.invenioRecordsEndpoints = angular.merge(
+      {},
+      endpoints
     );
 
     if (Object.keys(links).length > 0) {
@@ -396,15 +396,12 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
   function getEndpoints(){
     var deferred = $q.defer();
     if (angular.isUndefined(vm.invenioRecordsEndpoints.self)) {
-      var request = InvenioRecordsAPI.prepareRequest(
-        vm.invenioRecordsEndpoints.initialization,
-        'POST',
-        {},
-        vm.invenioRecordsArgs,
-        vm.invenioRecordsEndpoints
-      );
-      InvenioRecordsAPI.request(request)
-        .then(function success(response) {
+      InvenioRecordsAPI.request({
+        method: 'POST',
+        url: vm.invenioRecordsEndpoints.initialization,
+        data: {},
+        headers: vm.invenioRecordsArgs.headers || {}
+      }).then(function success(response) {
         $rootScope.$broadcast(
           'invenio.records.endpoints.updated', response.data.links
         );
@@ -416,13 +413,6 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
       deferred.resolve({});
     }
     return deferred.promise;
-  }
-
-  function wrapAction(type, method) {
-    function _doAction() {
-      return makeActionRequest(type, method);
-    }
-    return _doAction;
   }
 
   function cleanData() {
@@ -440,14 +430,12 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
 
   function makeActionRequest(type, method) {
     var _data = cleanData();
-    var request = InvenioRecordsAPI.prepareRequest(
-      vm.invenioRecordsEndpoints[type],
-      method,
-      _data,
-      vm.invenioRecordsArgs,
-      vm.invenioRecordsEndpoints
-    );
-    return InvenioRecordsAPI.request(request);
+    return InvenioRecordsAPI.request({
+      url: vm.invenioRecordsEndpoints[type],
+      method: (method || 'PUT').toUpperCase(),
+      data: _data,
+      headers: vm.invenioRecordsArgs.headers || {}
+    });
   }
 
   function handleActionRedirection(redirect_path) {
@@ -464,7 +452,7 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
 
     var _actions = (typeof(actions[0]) === 'string') ? [actions] : actions;
     function actionSuccessful(responses) {
-      var response = responses[responses.length - 1] || responses;
+      var response = responses[responses.length - 1] || {};
 
       $rootScope.$broadcast('invenio.records.alert', {
         type: 'success',
@@ -483,8 +471,7 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
 
       handleActionRedirection(redirect_path || undefined);
     }
-    function actionErrored(responses) {
-      var response = responses[responses.length - 1] || responses;
+    function actionErrored(response) {
       $rootScope.$broadcast('invenio.records.alert', {
         type: 'danger',
         data: response.data,
@@ -495,11 +482,19 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
         var promise = deferred.promise;
         promise.then(function displayValidationErrors() {
           angular.forEach(response.data.errors, function(value) {
-            $scope.$broadcast(
-              'schemaForm.error.' + value.field,
-              'backendValidationError',
-              value.message
-            );
+            try {
+              $scope.$broadcast(
+                'schemaForm.error.' + value.field.replace('metadata.', ''),
+                'backendValidationError',
+                value.message
+              );
+            } catch(error) {
+              $scope.$broadcast(
+                'schemaForm.error.' + value.field,
+                'backendValidationError',
+                value.message
+              );
+            }
           });
         }).then(function stopLoading() {
           $rootScope.$broadcast('invenio.records.loading.stop');
@@ -518,10 +513,10 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
         var promises = [];
         angular.forEach(_actions, function(action, index) {
           this.push(
-            wrapAction(action[0], action[1])
+            makeActionRequest(action[0], action[1])
           );
         }, promises);
-        ChainedPromise.promise(promises).then(
+        $q.all(promises).then(
           actionSuccessful,
           actionErrored
         );
@@ -581,16 +576,13 @@ function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
 
   function invenioRecordsLocationUpdated(evt, endpoints) {
     if (!angular.isUndefined(endpoints.html)) {
-      var _current = document.createElement('a');
-      _current.href = $location.path();
-      var _endpoints = document.createElement('a');
-      _endpoints.href = endpoints.html;
-      if (_endpoints.pathname !== _current.pathname) {
-        $location.url(_endpoints.pathname);
-        $location.replace();
-      }
+      var parser = document.createElement('a');
+      parser.href = endpoints.html;
+      $location.url(parser.pathname);
+      $location.replace();
     }
   }
+
 
 
   vm.actionHandler = invenioRecordsHandler;
@@ -628,7 +620,6 @@ InvenioRecordsCtrl.$inject = [
   '$location',
   '$timeout',
   'InvenioRecordsAPI',
-  'ChainedPromise',
 ];
 
 angular.module('invenioRecords.controllers')
@@ -654,45 +645,8 @@ function InvenioRecordsAPI($http, $q) {
     return request(args);
   }
 
-  function cleanData(data, unwanted) {
-    var _unwantend = unwanted || [[null], [{}], '', [undefined]];
-    angular.forEach(data, function(value, key) {
-      angular.forEach(_unwantend, function(_value) {
-        if (angular.equals(_value, value))  {
-          delete data[key];
-        }
-      });
-    });
-    return data;
-  }
-
-  function getData(model, extraParams, endpoints) {
-    var data = angular.merge(
-      {},
-      extraParams.data || {},
-      cleanData(model)
-    );
-    if (data.$schema === undefined && endpoints.schema !== undefined) {
-      data.$schema = endpoints.schema;
-    }
-    return data;
-  }
-
-  function prepareRequest(url, method, model, extraParams, endpoints) {
-    var requestObject = {
-      url: url,
-      method: method,
-      headers: extraParams.headers || {},
-      data: getData(model, extraParams, endpoints)
-    };
-    return requestObject;
-  }
-
   return {
-    cleanData: cleanData,
     get: get,
-    getData: getData,
-    prepareRequest: prepareRequest,
     request: request,
   };
 }
