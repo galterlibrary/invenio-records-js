@@ -50,288 +50,6 @@ angular.module('invenioRecords.config')
   .config(invenioRecordsConfiguration);
 
 
-function invenioRecords() {
-
-
-  function link(scope, element, attrs, vm) {
-    var templateParams = {
-      templateParams: JSON.parse(attrs.templateParams || '{}')
-    };
-
-    var extraParams = JSON.parse(attrs.extraParams || '{}');
-
-    var links = JSON.parse(attrs.links || '{}');
-
-    var args = angular.merge(
-      {},
-      templateParams,
-      extraParams
-    );
-
-    var endpoints = {
-      form: attrs.form,
-      initialization: attrs.initialization,
-      schema: attrs.schema,
-    };
-    var record = JSON.parse(attrs.record || '{}');
-    scope.$broadcast(
-      'invenio.records.init', args, endpoints, record, links
-    );
-  }
-
-
-  return {
-    restrict: 'AE',
-    scope: false,
-    controller: 'InvenioRecordsCtrl',
-    controllerAs: 'recordsVM',
-    link: link,
-  };
-}
-
-angular.module('invenioRecords.directives')
-  .directive('invenioRecords', invenioRecords);
-
-
-function invenioRecordsActions() {
-
-
-  function templateUrl(element, attrs) {
-    return attrs.template;
-  }
-
-
-  return {
-    restrict: 'AE',
-    scope: false,
-    require: '^invenioRecords',
-    templateUrl: templateUrl,
-  };
-}
-
-angular.module('invenioRecords.directives')
-  .directive('invenioRecordsActions', invenioRecordsActions);
-
-
-function invenioRecordsAlert() {
-
-
-  function templateUrl(element, attrs) {
-    return attrs.template;
-  }
-
-
-  return {
-    restrict: 'AE',
-    scope: false,
-    require: '^invenioRecords',
-    templateUrl: templateUrl,
-  };
-}
-
-angular.module('invenioRecords.directives')
-  .directive('invenioRecordsAlert', invenioRecordsAlert);
-
-
-function invenioRecordsForm($q, schemaFormDecorators, InvenioRecordsAPI,
-  $httpParamSerializerJQLike) {
-
-
-  function link(scope, element, attrs, vm) {
-
-    if (attrs.formTemplates && attrs.formTemplatesBase) {
-      var formTemplates = JSON.parse(attrs.formTemplates);
-      var formTemplatesBase = attrs.formTemplatesBase;
-
-      if (formTemplatesBase.substr(formTemplatesBase.length -1) !== '/') {
-        formTemplatesBase = formTemplatesBase + '/';
-      }
-
-      angular.forEach(formTemplates, function(value, key) {
-        schemaFormDecorators
-          .decorator()[key.replace('_', '-')]
-          .template = formTemplatesBase + value;
-      });
-    }
-
-    var getProp = function (obj, prop) {
-      return prop.split('.').reduce(function(data, item) {
-        return data[item];
-      }, obj);
-    };
-
-    function _errorOrEmpty(){
-      var defer = $q.defer();
-      defer.resolve({data: []});
-      return defer.promise;
-    }
-
-    function _suggestEngine(args, map) {
-      if (args.url !== undefined) {
-        return InvenioRecordsAPI.request(args)
-          .then(
-            function success(response) {
-              var data = getProp(response.data, map.resultSource);
-              angular.forEach(data, function(value, key) {
-                var item = {};
-                item[map.valueProperty] = getProp(value, map.valueSource || map.valueProperty);
-                item[map.nameProperty] = getProp(value, map.nameSource || map.nameProperty);
-                data[key] = item;
-              });
-              return {
-                data: data
-              };
-            },
-            _errorOrEmpty
-          );
-      }
-      return _errorOrEmpty();
-    }
-
-    function _urlParser(url, urlParameters, query){
-      if (urlParameters !== undefined) {
-        var urlArgs = {};
-        angular.forEach(urlParameters, function(value, key) {
-          try {
-            if (value === 'value'){
-              urlArgs[key] = query;
-            } else {
-              urlArgs[key] = scope.$eval(value) || value;
-            }
-          } catch(error) {
-            urlArgs[key] = value;
-          }
-        });
-        url = url + '?' + $httpParamSerializerJQLike(
-          angular.merge({}, urlArgs)
-        );
-      }
-      return url;
-    }
-
-    function autocompleteSuggest(options, query) {
-      var args = {};
-      if (query === '') {
-        if (scope.lastSuggestions[options.url]) {
-          var defer = $q.defer();
-          defer.resolve(scope.lastSuggestions[options.url]);
-          return defer.promise;
-        } else if (options.scope && typeof options.scope.insideModel === 'string') {
-          query = options.scope.insideModel;
-          query = scope.$eval(options.processQuery || 'query', {query: query});
-        } else if (Array.isArray(options.initial) && options.initial.length > 0) {
-          var titleMap = options.initial.map(function(element) {
-            return {
-              "name": "(" + element["source"] + ") " + element['value'],
-              "value": element
-            }
-          });
-          var defer = $q.defer();
-          defer.resolve({"data": titleMap});
-          return defer.promise;
-        }
-
-      }
-      if (query && options.url !== undefined) {
-        args = angular.extend({}, args,
-          {
-            url: _urlParser(options.url, options.urlParameters, query),
-            method: 'GET',
-            data: options.data || {},
-            headers: options.headers || vm.invenioRecordsArgs.headers
-          }
-        );
-      }
-      return _suggestEngine(args, options.map).then(function(response) {
-        scope.lastSuggestions[options.url] = response;
-        return response;
-      });
-    }
-    scope.lastSuggestions = {};
-    scope.autocompleteSuggest = autocompleteSuggest;
-  }
-
-  function templateUrl(element, attrs) {
-    return attrs.template;
-  }
-
-
-  return {
-    restrict: 'AE',
-    link: link,
-    scope: false,
-    require: '^invenioRecords',
-    templateUrl: templateUrl,
-  };
-}
-
-invenioRecordsForm.$inject = [
-  '$q',
-  'schemaFormDecorators',
-  'InvenioRecordsAPI',
-  '$httpParamSerializerJQLike'
-];
-
-angular.module('invenioRecords.directives')
-  .directive('invenioRecordsForm', invenioRecordsForm);
-
-
-function invenioRecordsLoading() {
-
-
-  function templateUrl(element, attrs) {
-    return attrs.template;
-  }
-
-
-  return {
-    restrict: 'AE',
-    scope: false,
-    require: '^invenioRecords',
-    templateUrl: templateUrl,
-  };
-}
-
-angular.module('invenioRecords.directives')
-  .directive('invenioRecordsLoading', invenioRecordsLoading);
-
-
-function ChainedPromise($q) {
-
-  var chained = {};
-  chained.promise = function(promises) {
-    var defer = $q.defer();
-    var data = [];
-
-    function _chain(fn) {
-      fn().then(
-        function(_data) {
-          data.push(_data);
-          if (promises.length > 0) {
-            return _chain(promises.shift());
-          } else {
-            defer.resolve(data);
-          }
-        }, function(error) {
-          defer.reject(error);
-        }
-      );
-    }
-    _chain(promises.shift());
-    return defer.promise;
-  };
-
-  return chained;
-}
-
-ChainedPromise.$inject = [
-  '$q',
-];
-
-angular.module('invenioRecords.factories')
-  .factory('ChainedPromise', ChainedPromise);
-
-
 function InvenioRecordsCtrl($scope, $rootScope, $q, $window, $location,
     $timeout, InvenioRecordsAPI, ChainedPromise) {
 
@@ -633,6 +351,299 @@ InvenioRecordsCtrl.$inject = [
 
 angular.module('invenioRecords.controllers')
   .controller('InvenioRecordsCtrl', InvenioRecordsCtrl);
+
+
+function ChainedPromise($q) {
+
+  var chained = {};
+  chained.promise = function(promises) {
+    var defer = $q.defer();
+    var data = [];
+
+    function _chain(fn) {
+      fn().then(
+        function(_data) {
+          data.push(_data);
+          if (promises.length > 0) {
+            return _chain(promises.shift());
+          } else {
+            defer.resolve(data);
+          }
+        }, function(error) {
+          defer.reject(error);
+        }
+      );
+    }
+    _chain(promises.shift());
+    return defer.promise;
+  };
+
+  return chained;
+}
+
+ChainedPromise.$inject = [
+  '$q',
+];
+
+angular.module('invenioRecords.factories')
+  .factory('ChainedPromise', ChainedPromise);
+
+
+function invenioRecords() {
+
+
+  function link(scope, element, attrs, vm) {
+    var templateParams = {
+      templateParams: JSON.parse(attrs.templateParams || '{}')
+    };
+
+    var extraParams = JSON.parse(attrs.extraParams || '{}');
+
+    var links = JSON.parse(attrs.links || '{}');
+
+    var args = angular.merge(
+      {},
+      templateParams,
+      extraParams
+    );
+
+    var endpoints = {
+      form: attrs.form,
+      initialization: attrs.initialization,
+      schema: attrs.schema,
+    };
+    var record = JSON.parse(attrs.record || '{}');
+    scope.$broadcast(
+      'invenio.records.init', args, endpoints, record, links
+    );
+  }
+
+
+  return {
+    restrict: 'AE',
+    scope: false,
+    controller: 'InvenioRecordsCtrl',
+    controllerAs: 'recordsVM',
+    link: link,
+  };
+}
+
+angular.module('invenioRecords.directives')
+  .directive('invenioRecords', invenioRecords);
+
+
+function invenioRecordsActions() {
+
+
+  function templateUrl(element, attrs) {
+    return attrs.template;
+  }
+
+
+  return {
+    restrict: 'AE',
+    scope: false,
+    require: '^invenioRecords',
+    templateUrl: templateUrl,
+  };
+}
+
+angular.module('invenioRecords.directives')
+  .directive('invenioRecordsActions', invenioRecordsActions);
+
+
+function invenioRecordsAlert() {
+
+
+  function templateUrl(element, attrs) {
+    return attrs.template;
+  }
+
+
+  return {
+    restrict: 'AE',
+    scope: false,
+    require: '^invenioRecords',
+    templateUrl: templateUrl,
+  };
+}
+
+angular.module('invenioRecords.directives')
+  .directive('invenioRecordsAlert', invenioRecordsAlert);
+
+
+function invenioRecordsForm($q, schemaFormDecorators, InvenioRecordsAPI,
+  $httpParamSerializerJQLike) {
+
+
+  function link(scope, element, attrs, vm) {
+
+    if (attrs.formTemplates && attrs.formTemplatesBase) {
+      var formTemplates = JSON.parse(attrs.formTemplates);
+      var formTemplatesBase = attrs.formTemplatesBase;
+
+      if (formTemplatesBase.substr(formTemplatesBase.length -1) !== '/') {
+        formTemplatesBase = formTemplatesBase + '/';
+      }
+
+      angular.forEach(formTemplates, function(value, key) {
+        schemaFormDecorators
+          .decorator()[key.replace('_', '-')]
+          .template = formTemplatesBase + value;
+      });
+    }
+
+    var getProp = function (obj, prop) {
+      return prop.split('.').reduce(function(data, item) {
+        return data[item];
+      }, obj);
+    };
+
+    function _errorOrEmpty(){
+      var defer = $q.defer();
+      defer.resolve({data: []});
+      return defer.promise;
+    }
+
+    function _suggestEngine(args, map) {
+      if (args.url !== undefined) {
+        return InvenioRecordsAPI.request(args)
+          .then(
+            function success(response) {
+              var data = getProp(response.data, map.resultSource);
+              angular.forEach(data, function(value, key) {
+                var item = {};
+                item[map.valueProperty] = getProp(value, map.valueSource || map.valueProperty);
+                item[map.nameProperty] = getProp(value, map.nameSource || map.nameProperty);
+                data[key] = item;
+              });
+              return {
+                data: data
+              };
+            },
+            _errorOrEmpty
+          );
+      }
+      return _errorOrEmpty();
+    }
+
+    function _urlParser(url, urlParameters, query){
+      if (urlParameters !== undefined) {
+        var urlArgs = {};
+        angular.forEach(urlParameters, function(value, key) {
+          try {
+            if (value === 'value'){
+              urlArgs[key] = query;
+            } else {
+              urlArgs[key] = scope.$eval(value) || value;
+            }
+          } catch(error) {
+            urlArgs[key] = value;
+          }
+        });
+        url = url + '?' + $httpParamSerializerJQLike(
+          angular.merge({}, urlArgs)
+        );
+      }
+      return url;
+    }
+
+    function autocompleteSuggest(options, query) {
+      var args = {};
+      if (query === '') {
+        if (scope.lastSuggestions[options.url]) {
+          var defer = $q.defer();
+          defer.resolve(scope.lastSuggestions[options.url]);
+          return defer.promise;
+        } else if (options.scope && typeof options.scope.insideModel === 'string') {
+          query = options.scope.insideModel;
+          query = scope.$eval(options.processQuery || 'query', {query: query});
+        }
+      }
+      if (query && options.url !== undefined) {
+        args = angular.extend({}, args,
+          {
+            url: _urlParser(options.url, options.urlParameters, query),
+            method: 'GET',
+            data: options.data || {},
+            headers: options.headers || vm.invenioRecordsArgs.headers
+          }
+        );
+      }
+      return _suggestEngine(args, options.map).then(function(response) {
+        scope.lastSuggestions[options.url] = response;
+        return response;
+      });
+    }
+
+    function autocompleteTerms(options, query) {
+      var initializing = (
+        (query === '') || (query === options.scope.insideModel)
+      );
+
+      if (initializing && options.scope.insideModel) {
+        var model = options.scope.insideModel;
+        var titleMap = [
+          {
+            'name': '(' + model['source'] + ') ' + model['value'],
+            'value': model
+          }
+        ];
+        var defer = $q.defer();
+        defer.resolve({'data': titleMap});
+        return defer.promise;
+      } else {
+        return autocompleteSuggest(options, query);
+      }
+    }
+    scope.lastSuggestions = {};
+    scope.autocompleteSuggest = autocompleteSuggest;
+    scope.autocompleteTerms = autocompleteTerms;
+  }
+
+  function templateUrl(element, attrs) {
+    return attrs.template;
+  }
+
+
+  return {
+    restrict: 'AE',
+    link: link,
+    scope: false,
+    require: '^invenioRecords',
+    templateUrl: templateUrl,
+  };
+}
+
+invenioRecordsForm.$inject = [
+  '$q',
+  'schemaFormDecorators',
+  'InvenioRecordsAPI',
+  '$httpParamSerializerJQLike'
+];
+
+angular.module('invenioRecords.directives')
+  .directive('invenioRecordsForm', invenioRecordsForm);
+
+
+function invenioRecordsLoading() {
+
+
+  function templateUrl(element, attrs) {
+    return attrs.template;
+  }
+
+
+  return {
+    restrict: 'AE',
+    scope: false,
+    require: '^invenioRecords',
+    templateUrl: templateUrl,
+  };
+}
+
+angular.module('invenioRecords.directives')
+  .directive('invenioRecordsLoading', invenioRecordsLoading);
 
 
 function InvenioRecordsAPI($http, $q) {

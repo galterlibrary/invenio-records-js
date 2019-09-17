@@ -171,23 +171,7 @@ function invenioRecordsForm($q, schemaFormDecorators, InvenioRecordsAPI,
           // Pre-process the query value/identifier
           query = options.scope.insideModel;
           query = scope.$eval(options.processQuery || 'query', {query: query});
-        } else if (Array.isArray(options.initial) && options.initial.length > 0) {
-          // If there is no query, no previous suggestions, no insideModel
-          // and there are initial values, then these initial values should be
-          // used to populate the titleMap and so display the values correctly.
-          // WARNING: This is a workaround. New invenio-deposit frontend will
-          //          be better.
-          var titleMap = options.initial.map(function(element) {
-            return {
-              "name": "(" + element["source"] + ") " + element['value'],
-              "value": element
-            }
-          });
-          var defer = $q.defer();
-          defer.resolve({"data": titleMap});
-          return defer.promise;
         }
-
       }
       if (query && options.url !== undefined) {
         // Parse the url parameters
@@ -206,10 +190,42 @@ function invenioRecordsForm($q, schemaFormDecorators, InvenioRecordsAPI,
         return response;
       });
     }
+
+    /**
+      * Autocomplete and/or initialize terms field
+      * WHY: ui-select doesn't initialize autocomplete fields properly.
+      *      This does and improves on Invenio by removing the need for
+      *      additional network requests.
+      * @memberof invenioRecordsFrom
+      * @function autocompleteSuggest
+      * @param {Object} options - The options from the form schema.
+      * @param {String} query - The query.
+      */
+    function autocompleteTerms(options, query) {
+      var initializing = (
+        (query === '') || (query === options.scope.insideModel)
+      );
+
+      if (initializing && options.scope.insideModel) {
+        var model = options.scope.insideModel;
+        var titleMap = [
+          {
+            'name': '(' + model['source'] + ') ' + model['value'],
+            'value': model
+          }
+        ];
+        var defer = $q.defer();
+        defer.resolve({'data': titleMap});
+        return defer.promise;
+      } else {
+        return autocompleteSuggest(options, query);
+      }
+    }
     // Initialize last suggestions storage
     scope.lastSuggestions = {};
     // Attach to the scope
     scope.autocompleteSuggest = autocompleteSuggest;
+    scope.autocompleteTerms = autocompleteTerms;
   }
 
   /**
