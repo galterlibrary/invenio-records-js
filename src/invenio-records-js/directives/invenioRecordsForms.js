@@ -190,10 +190,42 @@ function invenioRecordsForm($q, schemaFormDecorators, InvenioRecordsAPI,
         return response;
       });
     }
+
+    /**
+      * Autocomplete and/or initialize terms field
+      * WHY: ui-select doesn't initialize autocomplete fields properly.
+      *      This does and improves on Invenio by removing the need for
+      *      additional network requests.
+      * @memberof invenioRecordsFrom
+      * @function autocompleteSuggest
+      * @param {Object} options - The options from the form schema.
+      * @param {String} query - The query.
+      */
+    function autocompleteTerms(options, query) {
+      var initializing = (
+        (query === '') || (query === options.scope.insideModel)
+      );
+
+      if (initializing && options.scope.insideModel) {
+        var model = options.scope.insideModel;
+        var titleMap = [
+          {
+            'name': '(' + model['source'] + ') ' + model['value'],
+            'value': model
+          }
+        ];
+        var defer = $q.defer();
+        defer.resolve({'data': titleMap});
+        return defer.promise;
+      } else {
+        return autocompleteSuggest(options, query);
+      }
+    }
     // Initialize last suggestions storage
     scope.lastSuggestions = {};
     // Attach to the scope
     scope.autocompleteSuggest = autocompleteSuggest;
+    scope.autocompleteTerms = autocompleteTerms;
   }
 
   /**
